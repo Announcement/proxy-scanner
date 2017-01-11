@@ -1,0 +1,45 @@
+{
+  "name": "proxy-scanner",
+  "version": "1.0.0",
+  "description": "Proxy Test Tool for checking your proxies",
+  "main": "index.js",
+  "scripts": {
+    "pretest": "plato -r -d report src -e .eslintrc.json",
+    "test": "istanbul cover ./node_modules/mocha/bin/_mocha",
+    "preversion": "rollup -c",
+    "postversion": "babel src -d lib",
+    "prepublish": "uglifyjs bin/index.js -c --source-map bin/index.min.js.map --source-map-root bin -o bin/index.min.js"
+  },
+  "bin": {
+    "ptt": "./src/main.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chalk": "^1.1.3",
+    "commander": "^2.9.0",
+    "highland": "^2.10.1",
+    "request": "^2.79.0"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.18.0",
+    "babel-plugin-external-helpers": "^6.18.0",
+    "babel-polyfill": "^6.20.0",
+    "babel-preset-env": "^1.1.8",
+    "babel-preset-es2015": "^6.18.0",
+    "babel-register": "^6.18.0",
+    "chai": "^3.5.0",
+    "eslint": "^3.13.1",
+    "eslint-config-standard": "^6.2.1",
+    "eslint-plugin-promise": "^3.4.0",
+    "eslint-plugin-standard": "^2.0.1",
+    "istanbul": "^0.4.5",
+    "mocha": "^3.2.0",
+    "rollup": "^0.41.1",
+    "rollup-plugin-babel": "^2.7.1",
+    "rollup-plugin-json": "^2.1.0",
+    "rollup-plugin-node-builtins": "^2.0.0",
+    "rollup-plugin-node-resolve": "^2.0.0",
+    "rollup-plugin-sourcemaps": "^0.4.1"
+  }
+}
