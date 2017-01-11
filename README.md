@@ -6,16 +6,24 @@ Proxy Test Tool for checking your proxies
 - threading
 - file input
 - HTTP proxy
-
-## Coming soon
 - Progress (web) Interface
 - SOCKet Secure proxy
+
+## Coming soon
+- Documentation
+- Testing
 
 
 ## Installing
 
 Currently, only a manual available install method is provided.
 Once we're ready for deployment I'll publish it for easier installing.
+
+### NPM Install
+
+``` sh
+npm install --global proxy-scanner
+```
 
 ### Manual install
 ``` sh
