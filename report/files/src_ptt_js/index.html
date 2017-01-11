@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Plato - src\ptt.js</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <!--[if lt IE 9]>
+  <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+
+  <link href="../../assets/css/vendor/morris.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/bootstrap.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/font-awesome.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/codemirror.css" rel="stylesheet">
+  <link href="../../assets/css/plato.css" rel="stylesheet">
+  <link href="../../assets/css/plato-file.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+<div class="navbar navbar-fixed-top">
+  <div class="container">
+    <a class="navbar-brand" href="http://github.com/es-analysis/plato">Plato on Github</a>
+    <ul class="nav navbar-nav">
+      <li>
+        <a href="../../index.html">Report Home</a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<div class="jumbotron">
+  <div class="container">
+    <h1>src\ptt.js</h1>
+  </div>
+</div>
+
+<div class="container aggregate-stats">
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Maintainability <a href="http://blogs.msdn.com/b/codeanalysis/archive/2007/11/20/maintainability-index-range-and-meaning.aspx"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="A value between 0 and 100 that represents the relative ease of maintaining the code. A high value means better maintainability." data-original-title="Maintainability Index"  data-container="body"></i></a></h2>
+      <p class="stat">73.28</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Lines of code <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h2>
+      <p class="stat">141</p>
+    </div>
+  </div>
+  <div class="row historical">
+    <div class="col-md-6">
+      <p id="chart_historical_maint" class="chart"></p>
+    </div>
+    <div class="col-md-6">
+      <p id="chart_historical_sloc" class="chart"></p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Difficulty  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="The difficulty measure is related to the difficulty of the program to write or understand." data-original-title="Difficulty" data-container="body"></i></a></h2>
+      <p class="stat">31.80</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Estimated Errors  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Halstead's delivered bugs is an estimate for the number of errors in the implementation." data-original-title="Delivered Bugs" data-container="body"></i></a></h2>
+      <p class="stat">1.25</p>
+    </div>
+  </div>
+</div>
+
+<div class="container charts">
+  <div class="row">
+    <h2 class="header">Function weight</h2>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h3 class="chart-header">By Complexity <a href="http://en.wikipedia.org/wiki/Cyclomatic_complexity"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="This metric counts the number of distinct paths through a block of code. Lower values are better." data-original-title="Cyclomatic Complexity" data-container="body"></i></a></h3>
+      <div id="fn-by-complexity" class="stat"></div>
+    </div>
+    <div class="col-md-6">
+      <h3 class="chart-header">By SLOC  <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h3>
+      <div id="fn-by-sloc" class="stat"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="row">
+    <textarea id="file-source" class="col-md-12">import { version, description } from &#039;../package.json&#039;;
+
+import * as program from &#039;commander&#039;;
+// import highland from &#039;highland&#039;;
+import * as chalk from &#039;chalk&#039;;
+import * as fs from &#039;fs&#039;;
+import * as path from &#039;path&#039;;
+import * as http from &#039;http&#039;;
+import * as cluster from &#039;cluster&#039;;
+import * as readline from &#039;readline&#039;;
+import {as} from &#039;./helpers&#039;;
+
+let decode = it =&gt; {
+  return {
+    host: it.match(/^[^:]+/m)[0],
+    port: parseInt(it.match(/\d+$/m)[0], 10)
+  };
+};
+
+let encoding = &#039;utf8&#039;;
+let config = {encoding};
+
+function configure(it) {
+  return {
+    host: it.host,
+    port: it.port,
+    path: &#039;https://api.ipify.org?format=json&#039;,
+    headers: {
+      Host: &#039;https://api.ipify.org?format=json&#039;
+    },
+    agent: false
+  };
+}
+
+if (cluster.isMaster) {
+  program
+    .usage(&#039;-5 --file ../proxies.txt&#039;)
+    .version(version)
+    .description(description)
+    .option(&#039;-f, --file &lt;input&gt;&#039;, &#039;Parse an input file line by line&#039;)
+    .option(&#039;-5, --socks5&#039;, &#039;Test for SOCKet Secure Layer 5&#039;)
+    .option(&#039;-4, --socks4&#039;, &#039;Test for SOCKet Secure Layer 4&#039;)
+    .parse(process.argv);
+
+
+
+  let fromFileSystem = () =&gt; {
+    if (!program.file) return false;
+    let realPath = path.resolve(program.file);
+    let readStream = fs.createReadStream(realPath, config);
+    return readStream;
+  }
+
+  let input = as.decomposed([fromFileSystem], process.stdin);
+
+  let rl = readline.createInterface({input});
+
+
+  class Runner {
+    constructor(callback) {
+      this.callback = callback;
+      this.running = 0;
+      this.queue = [];
+    }
+
+    initialize() {
+      let self = this;
+
+      if (this.queue.length === 0) return false;
+      if (this.running &gt; 0) return false;
+
+      this.running++;
+
+      let item = this.queue.shift();
+      let worker = cluster.fork();
+
+      worker.send(item);
+      worker.on(&#039;exit&#039;, () =&gt; {
+        self.running--;
+        self.initialize();
+      })
+    }
+
+    provide(information) {
+      this.queue.push(information);
+      this.initialize();
+    }
+  }
+
+
+  let runner = new Runner(it =&gt; {});
+
+  rl.on(&#039;line&#039;, it =&gt; runner.provide(it));
+}
+
+if (cluster.isWorker) {
+  process.on(&#039;message&#039;, function(message) {
+    let options = configure(decode(message));
+    http.get(options, response =&gt; {
+      process.stdout.write(chalk.yellow(message));
+
+      const statusCode = response.statusCode;
+      const contentType = response.headers[&#039;content-type&#039;];
+
+      var raw = &#039;&#039;;
+
+      process.stdout.write(&#039; headers...&#039;);
+
+      if (response.statusCode !== 200) {
+        console.log(&#039;bad status code&#039;);
+        process.exit(0);
+      }
+
+      if (!/^(text|application)\/json/.test(contentType)) {
+        console.log(&#039;bad content-type&#039;);
+        process.exit(0)
+      }
+
+      process.stdout.write(&#039; data&#039;);
+      response.setEncoding(encoding);
+
+      response.on(&#039;data&#039;, data =&gt; { process.stdout.write(&#039;.&#039;); raw += data});
+
+      response.on(&#039;end&#039;, () =&gt; {
+        try {
+          let parsed = JSON.parse(raw);
+          console.log(JSON.stringify(parsed, null, 2));
+        } catch (ex) {
+          console.log(ex.toString());
+        } finally {
+          process.exit(0);
+        }
+      });
+
+      response.on(&#039;error&#039;, error =&gt; {
+        console.log(error);
+        process.exit(0);
+      })
+    });
+  });
+}</textarea>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="container">
+    <p>.</p>
+  </div>
+</footer>
+
+<script type="text/html" id="complexity-popover-template">
+  <div class="complexity-notice">
+    Complexity : {{ cyclomatic }} <br>
+    Length : {{ halstead.length }} <br>
+    Difficulty : {{ halstead.difficulty.toFixed(2) }} <br>
+    Est # bugs : {{ halstead.bugs.toFixed(2) }}<br>
+  </div>
+</script>
+
+<script type="text/javascript" src="../../assets/scripts/bundles/core-bundle.js"></script>
+<script type="text/javascript" src="../../assets/scripts/bundles/codemirror.js"></script>
+<script type="text/javascript" src="../../assets/scripts/codemirror.markpopovertext.js"></script>
+<script type="text/javascript" src="report.js"></script>
+<script type="text/javascript" src="report.history.js"></script>
+<script type="text/javascript" src="../../assets/scripts/plato-file.js"></script>
+</body>
+</html>

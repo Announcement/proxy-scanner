@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Plato - src\helpers.js</title>
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="">
+  <meta name="author" content="">
+
+  <!--[if lt IE 9]>
+  <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+
+  <link href="../../assets/css/vendor/morris.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/bootstrap.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/font-awesome.css" rel="stylesheet">
+  <link href="../../assets/css/vendor/codemirror.css" rel="stylesheet">
+  <link href="../../assets/css/plato.css" rel="stylesheet">
+  <link href="../../assets/css/plato-file.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+<div class="navbar navbar-fixed-top">
+  <div class="container">
+    <a class="navbar-brand" href="http://github.com/es-analysis/plato">Plato on Github</a>
+    <ul class="nav navbar-nav">
+      <li>
+        <a href="../../index.html">Report Home</a>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<div class="jumbotron">
+  <div class="container">
+    <h1>src\helpers.js</h1>
+  </div>
+</div>
+
+<div class="container aggregate-stats">
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Maintainability <a href="http://blogs.msdn.com/b/codeanalysis/archive/2007/11/20/maintainability-index-range-and-meaning.aspx"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="A value between 0 and 100 that represents the relative ease of maintaining the code. A high value means better maintainability." data-original-title="Maintainability Index"  data-container="body"></i></a></h2>
+      <p class="stat">80.34</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Lines of code <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h2>
+      <p class="stat">407</p>
+    </div>
+  </div>
+  <div class="row historical">
+    <div class="col-md-6">
+      <p id="chart_historical_maint" class="chart"></p>
+    </div>
+    <div class="col-md-6">
+      <p id="chart_historical_sloc" class="chart"></p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h2 class="header">Difficulty  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="The difficulty measure is related to the difficulty of the program to write or understand." data-original-title="Difficulty" data-container="body"></i></a></h2>
+      <p class="stat">52.57</p>
+    </div>
+    <div class="col-md-6">
+      <h2 class="header">Estimated Errors  <a href="http://en.wikipedia.org/wiki/Halstead_complexity_measures"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Halstead's delivered bugs is an estimate for the number of errors in the implementation." data-original-title="Delivered Bugs" data-container="body"></i></a></h2>
+      <p class="stat">1.61</p>
+    </div>
+  </div>
+</div>
+
+<div class="container charts">
+  <div class="row">
+    <h2 class="header">Function weight</h2>
+  </div>
+  <div class="row">
+    <div class="col-md-6">
+      <h3 class="chart-header">By Complexity <a href="http://en.wikipedia.org/wiki/Cyclomatic_complexity"><i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="This metric counts the number of distinct paths through a block of code. Lower values are better." data-original-title="Cyclomatic Complexity" data-container="body"></i></a></h3>
+      <div id="fn-by-complexity" class="stat"></div>
+    </div>
+    <div class="col-md-6">
+      <h3 class="chart-header">By SLOC  <i class="icon icon-info-sign" rel="popover" data-placement="top" data-trigger="hover" data-content="Source Lines of Code / Logical Lines of Code" data-original-title="SLOC/LSLOC" data-container="body"></i></h3>
+      <div id="fn-by-sloc" class="stat"></div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="row">
+    <textarea id="file-source" class="col-md-12">// src/helpers.js https://github.com/Announcement/utemplate
+
+
+/** @module helpers */
+
+/**
+ * Lazy way of turning an item into an Array
+ * @function array$
+ *
+ * @param {Object} it - Array like object
+ *
+ * @return {Array} - implicit array object
+ */
+let array$ = function(it) {
+	return Array.prototype.slice.call(it, 0);
+};
+
+/**
+ * Appends values to an Array,
+ * but first replaces undefined values before adding to the end
+ *
+ * @function combine
+ *
+ * @param {Array} array - list of existing items
+ * @param {Array} values - proposed additions to the lsit
+ *
+ * @return {Array} - collective array
+ */
+function combine(array, values) {
+	let index;
+
+	array = array.concat([]);
+
+	while ((index = array.indexOf(undefined)) !== -1 &amp;&amp; values.length &gt; 0) {
+		array[index] = values.shift();
+	}
+
+	return array.concat(values);
+}
+
+/**
+ * Returns a modified function with lazy option assocations
+ *
+ * @function curry
+ *
+ * @param {Function} method - function to be curried
+ *
+ * @return {Function} curried functions
+ */
+function curry$(method) {
+  /**
+  * Generated method through currying, allowing chainibility
+  * @function transform
+  *
+  * @see combine
+  * @this
+  *
+  * @param {Array} params - arguments array
+  *
+  * @return {Object} piped output from source curry method
+  */
+	function transform(params) {
+		let context;
+
+		return function(...input) {
+			let args = combine(params, array$(arguments));
+
+			context = context || this;
+
+			if (args.length &lt; method.length || args.some((it) =&gt; it === undefined )) {
+				return transform(args);
+			} else {
+				return method.apply(context, args);
+			}
+		};
+	}
+	return method.length &lt;= 1 ? method : transform([]);
+}
+
+/**
+ * Returns a modified version of a function with negated boolean output
+ *
+ * @function negated
+ *
+ * @param {Function} it - method to be negated
+ *
+ * @return {Function}
+ */
+function negated$(it) {
+	return function() {
+		return !it.apply(this, arguments);
+	};
+}
+
+/**
+ * Pairs an object into a set of {key, value} arrays
+ *
+ * @function pair
+ *
+ * @param {Object} object - collection to be paired
+ *
+ * @return {Array.&lt;{name: string, value}&gt;}
+ */
+function pair(object) {
+	return Object.keys(object).map((key) =&gt; {
+		return {key: key, value: object[key]};
+	});
+}
+
+/**
+ * Curried shortcut to hasOwnProperty
+ *
+ * @function has
+ *
+ * @param {Object} object - collection containing property
+ * @param {String} property - property name to be checked
+ *
+ * @return {boolean}
+ */
+
+let has = curry$((object, property) =&gt; {
+	return object.hasOwnProperty(property);
+});
+
+/**
+ * Recursively brings arrays to the highest level
+ *
+ * @function flatten
+ *
+ * @param {Array.&lt;Array&gt;} array - container of the set
+ *
+ * @return Array
+ */
+function flatten(array) {
+	let isArray;
+	let toArray;
+	let fromArray;
+
+	isArray = (it) =&gt; it.constructor === Array;
+	toArray = (it) =&gt; isArray(it) ? it : [it];
+	fromArray = (a, b) =&gt; a.concat(b);
+
+	while (array.some(isArray)) {
+		array = array.map(toArray).reduce(fromArray);
+	}
+
+	return array;
+}
+
+/**
+ * Compares reference object to another object
+ *
+ * @function equals
+ *
+ * @see has
+ * @see pair
+ *
+ * @param {Object} reference - what should be compared to
+ * @param {Object} object - what we are comparing
+ *
+ * @return {boolean}
+ */
+function equals(reference, object) {
+	// Are they of the same type?
+	if (typeof reference !== typeof object ||
+			reference.constructor !== object.constructor) {
+		return false;
+	}
+
+	// Do we need to check recursively?
+	if (reference.constructor !== Object) {
+		return reference === object;
+	}
+
+	return flatten([
+		pair(reference),
+		pair(object),
+	])
+	.every((item) =&gt; {
+		return;
+		has(reference)(item.key) &amp;&amp;
+		has(object)(item.key) &amp;&amp;
+		equals(reference[item.key], object[item.key]);
+	});
+}
+/**
+ * Checks to see if an item exists (isn&#039;t null or undefined)
+ * @function exists
+ *
+ * @param {Object} it - the item in question of existance
+ *
+ * @return {boolean}
+ */
+function exists(it) {
+	return it !== undefined &amp;&amp; it !== null;
+}
+
+/**
+ * Attempts to apply mutation to subject, but returns the unmodified subject on failure
+ *
+ * @function attempt
+ *
+ * @see array$
+ *
+ * @param {Function} mutation - mutator function to be called on the subject
+ * @param {Object} subject - any input that should be mutated
+ *
+ * @return {Object}
+ */
+function attempt(mutation, subject) {
+	let parameters;
+	let alternative;
+	let response;
+
+	parameters = array$(arguments).slice(1);
+	alternative = parameters.length === 1 ? parameters[0] : parameters;
+
+	response = mutation.apply(this, parameters);
+
+	return response || alternative;
+}
+
+/**
+ * Clones an object
+ *
+ * @function clone
+ *
+ * @param {Object} object - object to be cloned
+ *
+ * @return {Object}
+ */
+function clone(object) {
+	return Object.assign({}, object);
+}
+
+/**
+ * Injects a transformer into each element of a collection
+ *
+ * @name inject(it, transformer)
+ *
+ * @see attempt
+ *
+ * @param {Object} it - collection
+ * @param {Function} tranform - mutator function
+ *
+ * @return {Object.&lt;string, Function&gt;}
+ */
+function inject(it, transform) {
+	let copy = {};
+
+	function cycle(key, value) {
+		if (value === copy) {
+			return false;
+		}
+
+		if (typeof value === &#039;function&#039;) {
+			return attempt(transform, value);
+		}
+
+		if (typeof value === &#039;object&#039;) {
+			return inject(value, transform);
+		}
+
+		// return value;
+	}
+
+	for (let key in it) {
+		copy[key] = cycle(key, it[key]);
+	}
+
+	return copy;
+};
+
+/**
+ * Prepares function collection by currying and adding a not chain
+ *
+ * @name prepare(it)
+ *
+ * @see inject
+ * @see negated$
+ * @see curry$
+ *
+ * @param {Object.&lt;string, Function&gt;} it - collection of functions
+ *
+ * @return {Object.&lt;string, Function&gt;} - curried functions object
+ */
+function prepare(it) {
+	let not, tmp;
+
+	not = inject(it, negated$);
+	not = inject(not, curry$);
+	tmp = inject(it, curry$);
+
+	tmp.not = not;
+
+	return tmp;
+}
+
+/**
+ * Applies functions to a value and moves down the chain if possible
+ *
+ * @function decompose
+ *
+ * @see exists
+ * @see attempt
+ * @see array$
+ *
+ * @param {Array} array - list of functions to be applied
+ * @param {Object} initial - optional initial item
+ *
+ * @return Object
+ */
+function decompose(array, initial) {
+	let composer = (previous, current) =&gt; attempt(current, previous);
+	let reducer = (it) =&gt; array.reduce(composer, initial || it);
+
+	return initial ? reducer(initial) : reducer;
+}
+
+let is$ = {
+	element: (object) =&gt; {
+		// return object instanceof Element;
+		return object.nodeType === document.ELEMENT_NODE;
+	},
+
+	fragment: (object) =&gt; {
+		// return object.constructor === DocumentFragment;
+		return object.nodeType === document.DOCUMENT_FRAGMENT_NODE;
+	},
+
+	text: (object) =&gt; {
+		// return child.constructor === Text;
+		return object.nodeType === document.TEXT_NODE;
+	},
+
+	equal: equals,
+	existant: exists,
+};
+
+is$ = prepare(is$);
+
+class Compare {
+	constructor(reference) {
+		this.reference = reference;
+	}
+
+	element(object) {
+		let result;
+
+		let isElementNode = (it) =&gt;
+			it.nodeType === document.ELEMENT_NODE;
+
+		// let isElement = it =&gt;
+		// 	object instanceof Element;
+
+		result = isElementNode(object);
+
+		return result === !this.reference.polarity;
+	}
+
+	fragment(object) {
+		let result;
+
+		let isDocumentFragmentNode = (it) =&gt;
+			it.nodeType === document.DOCUMENT_FRAGMENT_NODE;
+
+		// let isDocumentFragment = it =&gt;
+		// 	it.constructor === DocumentFragment;
+
+		result = isDocumentFragmentNode(object);
+
+		return result === !this.reference.polarity;
+	}
+
+	text(object) {
+		let isTextNode = (it) =&gt;
+			object.nodeType === document.TEXT_NODE;
+
+		// let isText = it =&gt;
+		// 	child.constructor === Text;
+
+		result = isTextNode(object);
+
+		return result === !this.reference.polarity;
+	}
+
+	equals(object, $reference) {
+		let reference = $reference || $reference;
+	}
+
+	existant(object) {
+
+	}
+
+}
+
+export let is = is$;
+export let as = {
+	array: array$,
+	pair: pair,
+	method: curry$,
+	flatten: flatten,
+	decomposed: decompose,
+	attempt: attempt,
+};
+//
+// console.log(is$.not.equal({a: &#039;b&#039;}, {a: &#039;b&#039;, c: &#039;d&#039;}));</textarea>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="container">
+    <p>.</p>
+  </div>
+</footer>
+
+<script type="text/html" id="complexity-popover-template">
+  <div class="complexity-notice">
+    Complexity : {{ cyclomatic }} <br>
+    Length : {{ halstead.length }} <br>
+    Difficulty : {{ halstead.difficulty.toFixed(2) }} <br>
+    Est # bugs : {{ halstead.bugs.toFixed(2) }}<br>
+  </div>
+</script>
+
+<script type="text/javascript" src="../../assets/scripts/bundles/core-bundle.js"></script>
+<script type="text/javascript" src="../../assets/scripts/bundles/codemirror.js"></script>
+<script type="text/javascript" src="../../assets/scripts/codemirror.markpopovertext.js"></script>
+<script type="text/javascript" src="report.js"></script>
+<script type="text/javascript" src="report.history.js"></script>
+<script type="text/javascript" src="../../assets/scripts/plato-file.js"></script>
+</body>
+</html>

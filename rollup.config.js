@@ -4,7 +4,7 @@ import sourcemaps from 'rollup-plugin-sourcemaps';
 import * as path from 'path';
 
 export default {
-  entry: 'src/main.js',
+  entry: 'src/ptt.js',
   format: 'cjs',
   moduleName: 'Scanner',
   sourceMap: true,
@@ -34,5 +34,5 @@ export default {
       "plugins": ["external-helpers"]
     })
   ],
-  dest: 'bin/main.js'
+  dest: 'bin/index.js'
 };
