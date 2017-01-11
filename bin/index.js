@@ -491,7 +491,7 @@ function configure(it) {
 
 if (cluster.isMaster) {
   (function () {
-    program.usage('-5 --file ../proxies.txt').version(version).description(description).option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5').option('-4, --socks4', 'Test for SOCKet Secure Layer 4').parse(process.argv);
+    program.usage('-5 --file ../proxies.txt').version(version).description(description).option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5').option('-4, --socks4', 'Test for SOCKet Secure Layer 4').option('-j, --threads', 'Number of threads/clusters to run on').parse(process.argv);
 
     var fromFileSystem = function fromFileSystem() {
       if (!program.file) return false;
