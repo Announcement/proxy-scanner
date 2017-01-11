@@ -3,8 +3,29 @@
   <head>
     <meta charset="utf-8">
     <title>Proxy Scanner Interface</title>
+    <script src="/socket.io/socket.io.js"></script>
   </head>
   <body>
-    
+    <section id="output">
+    </section>
+    <script>
+      var socket = io(window.location.origin);
+      var output = document.querySelector('#output');
+
+      function htmlSafe(message) {
+        if (!(message instanceof String)) {
+          return JSON.stringify(message, null, 2);
+        }
+        return message;
+      }
+
+      socket.on('message', function(message) {
+        let pre = document.createElement('pre');
+        let node = document.createTextNode(htmlSafe(message));
+
+        pre.appendChild(node);
+        output.appendChild(pre);
+      });
+    </script>
   </body>
 </html>

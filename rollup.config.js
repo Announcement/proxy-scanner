@@ -16,7 +16,12 @@ export default {
     "chalk",
     "commander",
     "highland",
-    "cluster"
+    "cluster",
+    "os",
+    "https",
+    "express",
+    "socket.io",
+    "socksv5"
   ],
   plugins: [
     sourcemaps(),

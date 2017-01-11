@@ -11,7 +11,7 @@ var http = require('http');
 var https = require('https');
 var cluster = require('cluster');
 var readline = require('readline');
-require('socksv5');
+var socks = require('socksv5');
 var express = _interopDefault(require('express'));
 var Socket = _interopDefault(require('socket.io'));
 
@@ -483,14 +483,15 @@ var decode = function decode(it) {
 
 var encoding = 'utf8';
 var config = { encoding: encoding };
+var target = 'https://api.ipify.org/?format=json';
 
 function configure(it) {
   return {
     host: it.host,
     port: it.port,
-    path: 'https://api.ipify.org?format=json',
+    path: target,
     headers: {
-      Host: 'https://api.ipify.org?format=json'
+      Host: target
     },
     agent: false
   };
@@ -501,6 +502,8 @@ if (cluster.isMaster) {
     var app = express();
     var httpd = http.Server(app);
     var io = Socket(httpd);
+
+    app.use(express.static('public'));
 
     program.usage('-5 --file ../proxies.txt').version(version).description(description).option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5')
     // .option('-4, --socks4', 'Test for SOCKet Secure Layer 4')
@@ -545,7 +548,7 @@ if (cluster.isMaster) {
           var self = this;
 
           if (this.queue.length === 0) return false;
-          if (this.running > threads$$1) return false;
+          if (this.running > 0) return false;
 
           this.running++;
 
@@ -556,6 +559,9 @@ if (cluster.isMaster) {
 
           worker.on('message', function (it) {
             var amount = self.queue.length + self.running + self.completed;
+
+            it.identity = worker.id;
+            it.identifier = worker.process.pid;
 
             var progress = Math.round(worker.id / amount * 100, 2);
 
@@ -622,57 +628,68 @@ if (cluster.isWorker) {
         elapsed: delay()
       });
     };
+
     process.on('message', function (message) {
       var decoded = decode(message);
-      var options = configure(decoded);
+      var proxyOptions = configure(decoded);
+
+      var socksOptions = {
+        proxyHost: decoded.host,
+        proxyPort: decoded.port,
+        auths: [socks.auth.None()]
+      };
 
       send(decoded, 'Decoded message');
 
-      try {
-        https.get(options, function (response) {
-          var statusCode = response.statusCode;
-          var contentType = response.headers['content-type'];
+      var responseCallback = function responseCallback(response) {
+        send('Response has been acquired');
 
-          var raw = '';
+        var statusCode = response.statusCode;
+        var contentType = response.headers['content-type'];
 
-          if (response.statusCode !== 200) {
-            send('bad status code', 'Request Error');
-            process.exit(0);
-          }
+        var raw = '';
 
-          if (!/^(text|application)\/json/.test(contentType)) {
-            send('bad content-type', 'Request Error');
-            process.exit(0);
-          }
+        if (response.statusCode !== 200) {
+          send('bad status code', 'Request Error');
+          process.exit(0);
+        }
 
-          send('Headers verified');
+        if (!/^(text|application)\/json/.test(contentType)) {
+          send('bad content-type', 'Request Error');
+          process.exit(0);
+        }
 
-          response.setEncoding(encoding);
+        send('Headers verified');
 
-          response.on('data', function (data) {
-            send('Data packet received');
-            raw += data;
-          });
+        response.setEncoding(encoding);
 
-          response.on('end', function () {
-            try {
-              var parsed = JSON.parse(raw);
-              send(parsed, 'HTTP proxy verified');
-            } catch (ex) {
-              send(ex.toString());
-            } finally {
-              process.exit(0);
-            }
-          });
-
-          response.on('error', function (error) {
-            send(error, 'Response Error');
-            process.exit(0);
-          });
+        response.on('data', function (data) {
+          send('Data packet received');
+          raw += data;
         });
-      } catch (ex) {
-        send(ex);
-      }
+
+        response.on('end', function () {
+          try {
+            var parsed = JSON.parse(raw);
+            send(parsed, 'HTTP proxy verified');
+          } catch (ex) {
+            send(ex.toString());
+          } finally {
+            process.exit(0);
+          }
+        });
+
+        response.on('error', function (error) {
+          send(error, 'Response Error');
+          process.exit(0);
+        });
+      };
+
+      send('Attempting SOCKSv5 Proxy Check');
+      https.get(socksOptions, responseCallback);
+
+      send('Attempting HTTP Proxy Check');
+      https.get(proxyOptions, responseCallback);
     });
   })();
 }
