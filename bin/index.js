@@ -569,7 +569,7 @@ if (cluster.isMaster) {
             process.stdout.cursorTo(0);
             process.stdout.write(progress + '% - ' + worker.id + ' @ ' + it.status + ' of ' + amount + ' "' + it.title + '"');
 
-            if (it.title === 'HTTP proxy verified') {
+            if (it.title === 'Verified') {
               console.log(it);
             }
 
@@ -671,7 +671,7 @@ if (cluster.isWorker) {
         response.on('end', function () {
           try {
             var parsed = JSON.parse(raw);
-            send(parsed, 'HTTP proxy verified');
+            send(parsed, 'Verified');
           } catch (ex) {
             send(ex.toString());
           } finally {
