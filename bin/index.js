@@ -493,8 +493,7 @@ function configureProxy(it) {
     path: 'https://api.ipify.org',
     headers: {
       Host: 'api.ipify.org'
-    },
-    agent: false
+    }
   };
 }
 
@@ -536,13 +535,17 @@ if (cluster.isMaster) {
     .version(version).description(description)
 
     // Options
-    .option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5').option('-4, --socks4', 'Test for SOCKet Secure Layer 4').option('-j, --threads <amount>', 'Number of threads/clusters to run on').option('--port <port>', 'Set the httpd interface port to listen on')
+    .option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5').option('-4, --socks4', 'Test for SOCKet Secure Layer 4').option('-j, --threads <amount>', 'Number of threads/clusters to run on').option('-s, --timeout <seconds>', 'Timeout to kill, defaults to infinity').option('--port <port>', 'Set the httpd interface port to listen on')
 
     // Provide it with arguments passed to the process
     .parse(process.argv);
 
     // Allow the HTTPd to listen on specified port
-    var listener = httpd.listen(program.port || null);
+    if (program.port !== null) {
+      httpd.listen(program.port);
+    } else {
+      httpd.listen();
+    }
 
     // If a port was not specified on the HTTPd, then output the assigned one
     if (!program.port) {
@@ -599,19 +602,54 @@ if (cluster.isMaster) {
       var assign = function assign(worker) {
         worker.send(it);
 
-        worker.on('message', function (message) {
-          console.log('Message', worker.id, message);
+        worker.on('message', function (it) {
+          if (it.constructor === String && it[0] === '!') {
+            console.log(it.substrnig(1));
+            return false;
+          }
+          process.stdout.write(worker.id + '');
+
+          for (var i = worker.id.toString().length; i < 4; i++) {
+            process.stdout.write(' ');
+          }
+
+          process.stdout.write(chalk.yellow(it.type.toUpperCase()));
+          process.stdout.write(' ');
+          for (var i = it.host.length; i < 15; i++) {
+            process.stdout.write(' ');
+          }
+          process.stdout.write(it.host);
+          process.stdout.write(':');
+          process.stdout.write(chalk.gray(it.port + ''));
+          for (var i = it.port.toString().length; i < 5; i++) {
+            process.stdout.write(' ');
+          }
+          process.stdout.write(it.elapsed + chalk.gray('ms'));
+          for (var i = it.elapsed.toString().length; i < 5; i++) {
+            process.stdout.write(' ');
+          }
+          process.stdout.write(' ');
+          process.stdout.write(JSON.stringify(it.message || it.error));
+          console.log('');
         });
 
         worker.on('error', function (error) {
-          console.log('Error', error);
+          console.log('Error', error.toString());
         });
+
+        if (program.timeout) {
+          setTimeout(function () {
+            worker.kill();
+          }, parseInt(program.timeout, 10) * 1000);
+        }
 
         worker.on('exit', function () {
           completed++;
 
           if (queue.length > 0) {
             attempt(queue.shift());
+          } else {
+            process.exit();
           }
         });
       };
@@ -633,6 +671,7 @@ if (cluster.isMaster) {
 // Children Workers
 if (cluster.isWorker) {
   process.on('message', function (message) {
+    var launch = new Date();
 
     // convert line into address:port
     var decoded = decode(message);
@@ -644,50 +683,74 @@ if (cluster.isWorker) {
     // promises for ease of continuity
     var get$$1 = function get$$1(options) {
       return new Promise(function (resolve$$1, reject) {
-        process.send({ message: 'Sending Request' });
-        try {
-          var connection = https.get(options, function (response) {
-            var statusCode = response.statusCode;
-            var contentType = response.headers['content-type'];
+        https.get(options, function (response) {
+          var statusCode = response.statusCode;
 
-            var raw = '';
+          var raw = '';
 
-            process.send({ statusCode: statusCode, contentType: contentType });
-
-            if (statusCode !== 200) {
-              reject('Status Code ' + statusCode);
-            }
-
-            if (!/^(text|application)\/json/.test(contentType)) {
-              reject('Content Type ' + contentType);
-            }
-
+          if (statusCode !== 200) {
+            reject({ 'error': 'Status Code ' + statusCode, 'from': 'status' });
+          } else {
+            process.send('!http is working so far');
             response.setEncoding(encoding);
 
             response.on('error', function (error) {
-              reject(error);
+              reject({ 'error': error, 'from': 'response' });
             });
 
             response.on('data', function (data) {
+              process.send('!receiving data via http');
               raw += data;
             });
 
             response.on('end', function () {
-              resolve$$1(raw);
+              resolve$$1({ 'data': raw });
             });
-          });
-        } catch (exception) {
-          reject(exception);
-        }
+          }
+        }).on('error', function (e) {
+          reject(e);
+        });
       });
     };
 
-    var passthrough = function passthrough(it) {
-      return process.send({ message: it });
-    };
-
-    var socks$$1 = get$$1(socksOptions).then(passthrough).catch(passthrough);
-    var proxy = get$$1(proxyOptions).then(passthrough).catch(passthrough);
+    var socks$$1 = get$$1(socksOptions).then(function (it) {
+      process.send({
+        message: it,
+        line: message,
+        host: decoded.host,
+        port: decoded.port,
+        elapsed: new Date() - launch,
+        type: 'socks'
+      });
+    }).catch(function (it) {
+      process.send({
+        error: it,
+        line: message,
+        host: decoded.host,
+        port: decoded.port,
+        elapsed: new Date() - launch,
+        type: 'socks'
+      });
+    });
+    var proxy = get$$1(proxyOptions).then(function (it) {
+      process.send({
+        message: it,
+        line: message,
+        host: decoded.host,
+        port: decoded.port,
+        elapsed: new Date() - launch,
+        type: 'https'
+      });
+    }).catch(function (it) {
+      process.send({
+        error: it,
+        line: message,
+        host: decoded.host,
+        port: decoded.port,
+        elapsed: new Date() - launch,
+        type: 'https'
+      });
+    });
   });
 }
 //# sourceMappingURL=index.js.map
