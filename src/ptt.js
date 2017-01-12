@@ -215,8 +215,6 @@ if (cluster.isMaster) {
 // Children Workers
 if (cluster.isWorker) {
   process.on('message', function(message) {
-    const launch = new Date();
-
     // convert line into address:port
     let decoded = decode(message);
 
@@ -257,42 +255,43 @@ if (cluster.isWorker) {
       });
     }
 
+    function createPacket(packet) {
+      let object = {
+        line: message,
+        host: decoded.host,
+        port: decoded.port
+      };
+
+      Object.keys(packet).forEach(function(key) {
+        object[key] = packet[key];
+      });
+
+      return object;
+    }
+
     let socks = get(socksOptions).then(it => {
-      process.send({
-        message: it,
-        line: message,
-        host: decoded.host,
-        port: decoded.port,
-        elapsed: (new Date()) - launch,
-        type: 'socks'
+      let packet = createPacket({
+        type: 'socks',
+        data: it
       });
     }).catch(it => {
-      process.send({
-        error: it,
-        line: message,
-        host: decoded.host,
-        port: decoded.port,
-        elapsed: (new Date()) - launch,
-        type: 'socks'
-      })
+      let packet = createPacket({
+        type: 'socks',
+        data: it,
+        error: true
+      });
     });
+
     let proxy = get(proxyOptions).then(it => {
-      process.send({
-        message: it,
-        line: message,
-        host: decoded.host,
-        port: decoded.port,
-        elapsed: (new Date()) - launch,
-        type: 'https'
+      let packet = createPacket({
+        type: 'https',
+        data: it
       });
     }).catch(it => {
-      process.send({
-        error: it,
-        line: message,
-        host: decoded.host,
-        port: decoded.port,
-        elapsed: (new Date()) - launch,
-        type: 'https'
+      let packet = createPacket({
+        type: 'https',
+        data: it,
+        error: true
       });
     });
   });
