@@ -1,7 +1,11 @@
 import { version, description } from '../package.json';
 
+import {as} from './helpers';
+
+import express from 'express';
+import Socket from 'socket.io';
+
 import * as program from 'commander';
-// import highland from 'highland';
 import * as chalk from 'chalk';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -11,11 +15,10 @@ import * as https from 'https';
 import * as cluster from 'cluster';
 import * as readline from 'readline';
 import * as socks from 'socksv5';
-import express from 'express';
-import Socket from 'socket.io';
 
-import {as} from './helpers';
+const encoding = 'utf8';
 
+// Quick and Dirty File Line Parsing Decoder
 let decode = it => {
   return {
     host: it.match(/^[^:]+/m)[0],
@@ -23,206 +26,208 @@ let decode = it => {
   };
 };
 
-const encoding = 'utf8';
 let config = {encoding};
-const target = 'https://api.ipify.org/?format=json';
 
-function configure(it) {
+// HTTP Proxy Support
+function configureProxy(it) {
   return {
     host: it.host,
     port: it.port,
-    path: target,
+    path: 'https://api.ipify.org',
     headers: {
-      Host: target
+      Host: 'api.ipify.org'
     },
     agent: false
   };
 }
 
+// SOCKSv5 Proxy Support
+function configureSocks(it) {
+  let socksConfig = {
+    proxyHost: it.host,
+    proxyPort: it.port,
+    auths: [ socks.auth.None() ]
+  };
+
+  return {
+    host: 'api.ipify.org',
+    port: 443,
+    path: '/',
+    agent: new socks.HttpsAgent(socksConfig)
+  };
+}
+
+// Main Process
 if (cluster.isMaster) {
+
+  // The HTTPd Interface
   let app = express();
   let httpd = http.Server(app);
   let io = Socket(httpd);
 
+  // Serve the HTTPd Static Interface Driver
   app.use(express.static('public'));
 
+  // Command Line Interface Configuration
   program
+    // Example usage
     .usage('-5 --file ../proxies.txt')
+
+    // Pulled from package.json
     .version(version)
     .description(description)
+
+    // Options
     .option('-f, --file <input>', 'Parse an input file line by line')
     .option('-5, --socks5', 'Test for SOCKet Secure Layer 5')
-    // .option('-4, --socks4', 'Test for SOCKet Secure Layer 4')
-    .option('-j, --threads', 'Number of threads/clusters to run on')
+    .option('-4, --socks4', 'Test for SOCKet Secure Layer 4')
+    .option('-j, --threads <amount>', 'Number of threads/clusters to run on')
     .option('--port <port>', 'Set the httpd interface port to listen on')
+
+    // Provide it with arguments passed to the process
     .parse(process.argv);
 
+  // Allow the HTTPd to listen on specified port
   let listener = httpd.listen(program.port || null);
 
+  // If a port was not specified on the HTTPd, then output the assigned one
   if(!program.port) {
     console.log(chalk.yellow('Interface'), 'Listening on port', chalk.blue(httpd.address().port));
   }
 
+  // Configure the amount of threads to be used
   let threads = program.threads || os.cpus().length;
 
+  // File Systems Input Driver
   let fromFileSystem = () => {
     if (!program.file) return false;
+
+    // locate the file and prepare to read it
     let realPath = path.resolve(program.file);
     let readStream = fs.createReadStream(realPath, config);
+
     return readStream;
   }
 
-  let input = as.decomposed([fromFileSystem], process.stdin);
+  // Load the best Input Driver
+  let input = as.decomposed([
+    fromFileSystem
+  ], process.stdin);
 
+  // Create a Readable Stream capable of line-by-line parsing
   let rl = readline.createInterface({input});
 
+  // Silence children
   cluster.setupMaster({
-    silent: true
+    // silent: true
   });
 
-  class Runner {
-    constructor(callback) {
-      this.callback = callback;
-      this.running = 0;
-      this.completed = 0;
-      this.queue = [];
+  let distribute = (workload) => {
+    for (const id in cluster.workers) {
+      workload(cluster.workers[id]);
     }
+  };
 
-    initialize() {
-      let self = this;
+  let count = () => {
+    var i = 0;
+    distribute(() => i++);
+    return i;
+  }
 
-      if (this.queue.length === 0) return false;
-      if (this.running > 0) return false;
+  var queue = [];
+  var completed = 0;
 
-      this.running++;
+  let attempt = it => {
+    let amount = count();
+    let total = amount + completed + queue.length;
 
-      let item = this.queue.shift();
-      let worker = cluster.fork();
+    let assign = worker => {
+      worker.send(it);
 
-      worker.send(item);
+      worker.on('message', function(message) {
+        console.log('Message', worker.id, message);
+      });
 
-      worker.on('message', it => {
-        let amount = self.queue.length + self.running + self.completed;
+      worker.on('error', function(error) {
+        console.log('Error', error);
+      });
 
-        it.identity = worker.id;
-        it.identifier = worker.process.pid;
+      worker.on('exit', function() {
+        completed++;
 
-        let progress = Math.round(worker.id / amount * 100, 2);
-
-        process.stdout.clearLine();
-        process.stdout.cursorTo(0);
-        process.stdout.write(`${progress}% - ${worker.id} @ ${it.status} of ${amount} "${it.title}"`);
-
-        if (it.title === 'Verified') {
-          console.log(it);
+        if (queue.length > 0) {
+          attempt(queue.shift());
         }
-
-        io.emit('message', it);
-      })
-
-      worker.on('exit', () => {
-        self.running--;
-        self.completed++;
-        self.initialize();
       });
+    };
 
-      worker.on('error', error => {
-        console.log('An error has occured');
-      });
-    }
-
-    provide(information) {
-      this.queue.push(information);
-      this.initialize();
+    if (threads > amount) {
+      assign(cluster.fork());
+    } else {
+      queue.push(it);
     }
   }
 
-
-  let runner = new Runner(it => {});
-
-  rl.on('line', it => runner.provide(it));
+  // Run each line as a task
+  rl.on('line', it => { attempt(it) });
 }
 
+
+// Children Workers
 if (cluster.isWorker) {
-  var time = new Date();
-  var increment = 0;
-
-  let delay = () => {
-    let now = new Date();
-    let difference = now - time;
-    time = now;
-    return difference;
-  };
-
-  let send = (it, title) => {
-    process.send({
-      status: ++increment,
-      message: it,
-      title: title || 'Status update',
-      elapsed: delay()
-    });
-  };
-
   process.on('message', function(message) {
+
+    // convert line into address:port
     let decoded = decode(message);
-    let proxyOptions = configure(decoded);
 
-    let socksOptions = {
-      proxyHost: decoded.host,
-      proxyPort: decoded.port,
-      auths: [ socks.auth.None() ]
-    };
+    // prepare each method
+    let proxyOptions = configureProxy(decoded);
+    let socksOptions = configureSocks(decoded);
 
-    send(decoded, 'Decoded message');
-
-    let responseCallback = response => {
-      send('Response has been acquired');
-
-      const statusCode = response.statusCode;
-      const contentType = response.headers['content-type'];
-
-      var raw = '';
-
-      if (response.statusCode !== 200) {
-        send('bad status code', 'Request Error');
-        process.exit(0);
-      }
-
-      if (!/^(text|application)\/json/.test(contentType)) {
-        send('bad content-type', 'Request Error');
-        process.exit(0)
-      }
-
-      send('Headers verified');
-
-      response.setEncoding(encoding);
-
-      response.on('data', data => {
-        send('Data packet received');
-        raw += data;
-      });
-
-      response.on('end', () => {
+    // promises for ease of continuity
+    let get = (options) => {
+      return new Promise(function(resolve, reject) {
+        process.send({message: 'Sending Request'});
         try {
-          let parsed = JSON.parse(raw);
-          send(parsed, 'Verified');
-        } catch (ex) {
-          send(ex.toString());
-        } finally {
-          process.exit(0);
-        }
-      });
+          let connection = https.get(options, (response) => {
+            const statusCode = response.statusCode;
+            const contentType = response.headers['content-type'];
 
-      response.on('error', error => {
-        send(error, 'Response Error');
-        process.exit(0);
+            var raw = '';
+
+            process.send({statusCode, contentType});
+
+            if (statusCode !== 200) {
+              reject(`Status Code ${statusCode}`);
+            }
+
+            if (!/^(text|application)\/json/.test(contentType)) {
+              reject(`Content Type ${contentType}`);
+            }
+
+            response.setEncoding(encoding);
+
+            response.on('error', error => {
+              reject(error);
+            });
+
+            response.on('data', data => {
+              raw += data;
+            });
+
+            response.on('end', () => {
+              resolve(raw);
+            });
+          });
+        } catch (exception) {
+          reject(exception);
+        }
       });
     }
 
-    send('Attempting SOCKSv5 Proxy Check');
-    https.get(socksOptions, responseCallback);
+    let passthrough = it => process.send({message: it});
 
-    send('Attempting HTTP Proxy Check');
-    https.get(proxyOptions, responseCallback);
+    let socks = get(socksOptions).then(passthrough).catch(passthrough);
+    let proxy = get(proxyOptions).then(passthrough).catch(passthrough);
   });
 }

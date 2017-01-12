@@ -2,6 +2,8 @@
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
+var express = _interopDefault(require('express'));
+var Socket = _interopDefault(require('socket.io'));
 var program = require('commander');
 var chalk = require('chalk');
 var fs = require('fs');
@@ -12,8 +14,6 @@ var https = require('https');
 var cluster = require('cluster');
 var readline = require('readline');
 var socks = require('socksv5');
-var express = _interopDefault(require('express'));
-var Socket = _interopDefault(require('socket.io'));
 
 var version = "1.0.0";
 var description = "Proxy Test Tool for checking your proxies";
@@ -473,7 +473,9 @@ var as = {
 //
 // console.log(is$.not.equal({a: 'b'}, {a: 'b', c: 'd'}));
 
-// import highland from 'highland';
+var encoding = 'utf8';
+
+// Quick and Dirty File Line Parsing Decoder
 var decode = function decode(it) {
   return {
     host: it.match(/^[^:]+/m)[0],
@@ -481,216 +483,211 @@ var decode = function decode(it) {
   };
 };
 
-var encoding = 'utf8';
 var config = { encoding: encoding };
-var target = 'https://api.ipify.org/?format=json';
 
-function configure(it) {
+// HTTP Proxy Support
+function configureProxy(it) {
   return {
     host: it.host,
     port: it.port,
-    path: target,
+    path: 'https://api.ipify.org',
     headers: {
-      Host: target
+      Host: 'api.ipify.org'
     },
     agent: false
   };
 }
 
+// SOCKSv5 Proxy Support
+function configureSocks(it) {
+  var socksConfig = {
+    proxyHost: it.host,
+    proxyPort: it.port,
+    auths: [socks.auth.None()]
+  };
+
+  return {
+    host: 'api.ipify.org',
+    port: 443,
+    path: '/',
+    agent: new socks.HttpsAgent(socksConfig)
+  };
+}
+
+// Main Process
 if (cluster.isMaster) {
+  var queue;
+  var completed;
+
   (function () {
+
+    // The HTTPd Interface
     var app = express();
     var httpd = http.Server(app);
     var io = Socket(httpd);
 
+    // Serve the HTTPd Static Interface Driver
     app.use(express.static('public'));
 
-    program.usage('-5 --file ../proxies.txt').version(version).description(description).option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5')
-    // .option('-4, --socks4', 'Test for SOCKet Secure Layer 4')
-    .option('-j, --threads', 'Number of threads/clusters to run on').option('--port <port>', 'Set the httpd interface port to listen on').parse(process.argv);
+    // Command Line Interface Configuration
+    program.usage('-5 --file ../proxies.txt')
 
+    // Pulled from package.json
+    .version(version).description(description)
+
+    // Options
+    .option('-f, --file <input>', 'Parse an input file line by line').option('-5, --socks5', 'Test for SOCKet Secure Layer 5').option('-4, --socks4', 'Test for SOCKet Secure Layer 4').option('-j, --threads <amount>', 'Number of threads/clusters to run on').option('--port <port>', 'Set the httpd interface port to listen on')
+
+    // Provide it with arguments passed to the process
+    .parse(process.argv);
+
+    // Allow the HTTPd to listen on specified port
     var listener = httpd.listen(program.port || null);
 
+    // If a port was not specified on the HTTPd, then output the assigned one
     if (!program.port) {
       console.log(chalk.yellow('Interface'), 'Listening on port', chalk.blue(httpd.address().port));
     }
 
+    // Configure the amount of threads to be used
     var threads$$1 = program.threads || os.cpus().length;
 
+    // File Systems Input Driver
     var fromFileSystem = function fromFileSystem() {
       if (!program.file) return false;
+
+      // locate the file and prepare to read it
       var realPath = path.resolve(program.file);
       var readStream = fs.createReadStream(realPath, config);
+
       return readStream;
     };
 
+    // Load the best Input Driver
     var input = as.decomposed([fromFileSystem], process.stdin);
 
+    // Create a Readable Stream capable of line-by-line parsing
     var rl = readline.createInterface({ input: input });
 
+    // Silence children
     cluster.setupMaster({
-      silent: true
+      // silent: true
     });
 
-    var Runner = function () {
-      function Runner(callback) {
-        classCallCheck(this, Runner);
-
-        this.callback = callback;
-        this.running = 0;
-        this.completed = 0;
-        this.queue = [];
+    var distribute = function distribute(workload) {
+      for (var id in cluster.workers) {
+        workload(cluster.workers[id]);
       }
+    };
 
-      createClass(Runner, [{
-        key: 'initialize',
-        value: function initialize() {
-          var self = this;
+    var count = function count() {
+      var i = 0;
+      distribute(function () {
+        return i++;
+      });
+      return i;
+    };
 
-          if (this.queue.length === 0) return false;
-          if (this.running > 0) return false;
+    queue = [];
+    completed = 0;
 
-          this.running++;
 
-          var item = this.queue.shift();
-          var worker = cluster.fork();
+    var attempt = function attempt(it) {
+      var amount = count();
+      var total = amount + completed + queue.length;
 
-          worker.send(item);
+      var assign = function assign(worker) {
+        worker.send(it);
 
-          worker.on('message', function (it) {
-            var amount = self.queue.length + self.running + self.completed;
+        worker.on('message', function (message) {
+          console.log('Message', worker.id, message);
+        });
 
-            it.identity = worker.id;
-            it.identifier = worker.process.pid;
+        worker.on('error', function (error) {
+          console.log('Error', error);
+        });
 
-            var progress = Math.round(worker.id / amount * 100, 2);
+        worker.on('exit', function () {
+          completed++;
 
-            process.stdout.clearLine();
-            process.stdout.cursorTo(0);
-            process.stdout.write(progress + '% - ' + worker.id + ' @ ' + it.status + ' of ' + amount + ' "' + it.title + '"');
+          if (queue.length > 0) {
+            attempt(queue.shift());
+          }
+        });
+      };
 
-            if (it.title === 'Verified') {
-              console.log(it);
-            }
+      if (threads$$1 > amount) {
+        assign(cluster.fork());
+      } else {
+        queue.push(it);
+      }
+    };
 
-            io.emit('message', it);
-          });
-
-          worker.on('exit', function () {
-            self.running--;
-            self.completed++;
-            self.initialize();
-          });
-
-          worker.on('error', function (error) {
-            console.log('An error has occured');
-          });
-        }
-      }, {
-        key: 'provide',
-        value: function provide(information) {
-          this.queue.push(information);
-          this.initialize();
-        }
-      }]);
-      return Runner;
-    }();
-
-    var runner = new Runner(function (it) {});
-
+    // Run each line as a task
     rl.on('line', function (it) {
-      return runner.provide(it);
+      attempt(it);
     });
   })();
 }
 
+// Children Workers
 if (cluster.isWorker) {
-  var time;
-  var increment;
+  process.on('message', function (message) {
 
-  (function () {
-    time = new Date();
-    increment = 0;
+    // convert line into address:port
+    var decoded = decode(message);
 
+    // prepare each method
+    var proxyOptions = configureProxy(decoded);
+    var socksOptions = configureSocks(decoded);
 
-    var delay = function delay() {
-      var now = new Date();
-      var difference = now - time;
-      time = now;
-      return difference;
-    };
+    // promises for ease of continuity
+    var get$$1 = function get$$1(options) {
+      return new Promise(function (resolve$$1, reject) {
+        process.send({ message: 'Sending Request' });
+        try {
+          var connection = https.get(options, function (response) {
+            var statusCode = response.statusCode;
+            var contentType = response.headers['content-type'];
 
-    var send = function send(it, title) {
-      process.send({
-        status: ++increment,
-        message: it,
-        title: title || 'Status update',
-        elapsed: delay()
+            var raw = '';
+
+            process.send({ statusCode: statusCode, contentType: contentType });
+
+            if (statusCode !== 200) {
+              reject('Status Code ' + statusCode);
+            }
+
+            if (!/^(text|application)\/json/.test(contentType)) {
+              reject('Content Type ' + contentType);
+            }
+
+            response.setEncoding(encoding);
+
+            response.on('error', function (error) {
+              reject(error);
+            });
+
+            response.on('data', function (data) {
+              raw += data;
+            });
+
+            response.on('end', function () {
+              resolve$$1(raw);
+            });
+          });
+        } catch (exception) {
+          reject(exception);
+        }
       });
     };
 
-    process.on('message', function (message) {
-      var decoded = decode(message);
-      var proxyOptions = configure(decoded);
+    var passthrough = function passthrough(it) {
+      return process.send({ message: it });
+    };
 
-      var socksOptions = {
-        proxyHost: decoded.host,
-        proxyPort: decoded.port,
-        auths: [socks.auth.None()]
-      };
-
-      send(decoded, 'Decoded message');
-
-      var responseCallback = function responseCallback(response) {
-        send('Response has been acquired');
-
-        var statusCode = response.statusCode;
-        var contentType = response.headers['content-type'];
-
-        var raw = '';
-
-        if (response.statusCode !== 200) {
-          send('bad status code', 'Request Error');
-          process.exit(0);
-        }
-
-        if (!/^(text|application)\/json/.test(contentType)) {
-          send('bad content-type', 'Request Error');
-          process.exit(0);
-        }
-
-        send('Headers verified');
-
-        response.setEncoding(encoding);
-
-        response.on('data', function (data) {
-          send('Data packet received');
-          raw += data;
-        });
-
-        response.on('end', function () {
-          try {
-            var parsed = JSON.parse(raw);
-            send(parsed, 'Verified');
-          } catch (ex) {
-            send(ex.toString());
-          } finally {
-            process.exit(0);
-          }
-        });
-
-        response.on('error', function (error) {
-          send(error, 'Response Error');
-          process.exit(0);
-        });
-      };
-
-      send('Attempting SOCKSv5 Proxy Check');
-      https.get(socksOptions, responseCallback);
-
-      send('Attempting HTTP Proxy Check');
-      https.get(proxyOptions, responseCallback);
-    });
-  })();
+    var socks$$1 = get$$1(socksOptions).then(passthrough).catch(passthrough);
+    var proxy = get$$1(proxyOptions).then(passthrough).catch(passthrough);
+  });
 }
 //# sourceMappingURL=index.js.map

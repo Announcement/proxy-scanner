@@ -19,12 +19,21 @@
         return message;
       }
 
+      socket.on('connection', function() {
+        output.innerHTML = '';
+      });
+
       socket.on('message', function(message) {
         let pre = document.createElement('pre');
         let node = document.createTextNode(htmlSafe(message));
 
         pre.appendChild(node);
-        output.appendChild(pre);
+
+        if (output.childNodes.length > 0) {
+          output.insertBefore(pre, output.firstChild);
+        } else {
+          output.append(pre);
+        }
       });
     </script>
   </body>
